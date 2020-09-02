@@ -296,6 +296,13 @@ static int rdp_guac_client_wait_for_messages(guac_client* client,
     guac_rdp_client* rdp_client = (guac_rdp_client*) client->data;
     freerdp* rdp_inst = rdp_client->rdp_inst;
 
+    /* Mitigate race condition.
+        An rdpy ssl honeypot's deactivate all PDU appears to fire too fast to
+        be picked up by this function */
+    if (freerdp_check_fds(rdp_inst)) {
+        return 1;
+    }
+
     HANDLE handles[GUAC_RDP_MAX_FILE_DESCRIPTORS];
     int num_handles = freerdp_get_event_handles(rdp_inst->context, handles,
             GUAC_RDP_MAX_FILE_DESCRIPTORS);
