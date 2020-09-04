@@ -42,6 +42,7 @@
 #include "pointer.h"
 #include "print-job.h"
 #include "rdp.h"
+#include "libfreerdp.h"
 
 #ifdef ENABLE_COMMON_SSH
 #include "common-ssh/sftp.h"
@@ -295,12 +296,19 @@ static int rdp_guac_client_wait_for_messages(guac_client* client,
 
     guac_rdp_client* rdp_client = (guac_rdp_client*) client->data;
     freerdp* rdp_inst = rdp_client->rdp_inst;
+    rdpRdp* rdp;
 
     /* Mitigate race condition.
         An rdpy ssl honeypot's deactivate all PDU appears to fire too fast to
         be picked up by this function */
-    if (freerdp_check_fds(rdp_inst)) {
-        return 1;
+    if (rdp_inst && rdp_inst->context && rdp_inst->context->rdp) {
+        rdp = rdp_inst->context->rdp;
+
+        if (rdp->transport && rdp->transport->tls && rdp->transport->tls->ssl) {
+            if (SSL_has_pending(rdp->transport->tls->ssl)) {
+                return 1;
+            }
+        }
     }
 
     HANDLE handles[GUAC_RDP_MAX_FILE_DESCRIPTORS];
@@ -559,16 +567,16 @@ void* guac_rdp_client_thread(void* data) {
     if (settings->wol_send_packet) {
         guac_client_log(client, GUAC_LOG_DEBUG, "Sending Wake-on-LAN packet, "
                 "and pausing for %d seconds.", settings->wol_wait_time);
-        
+
         /* Send the Wake-on-LAN request. */
         if (guac_wol_wake(settings->wol_mac_addr, settings->wol_broadcast_addr))
             return NULL;
-        
+
         /* If wait time is specified, sleep for that amount of time. */
         if (settings->wol_wait_time > 0)
             guac_timestamp_msleep(settings->wol_wait_time * 1000);
     }
-    
+
     /* If audio enabled, choose an encoder */
     if (settings->audio_enabled) {
 
